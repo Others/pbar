@@ -5,11 +5,13 @@ import numpy as np
 from pathlib import Path
 import pickle
 import re
+from sklearn.ensemble import AdaBoostRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import normalize
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.preprocessing import StandardScaler
 import subprocess
 import sys
 import time
@@ -18,7 +20,10 @@ import uuid
 
 PBAR_DATA_DIR = os.getenv("HOME") + '/.config/pbar'
 PBAR_LOG_DIR = PBAR_DATA_DIR + '/logs'
-PBAR_TEMP_FILE = '/tmp/pbar.out'
+# FIXME: We should regen a temp file each time
+PBAR_TEMP_FILE = PBAR_DATA_DIR + '/pbar_tmp.out'
+
+MAX_LOG_GRANULARITY = 200
 
 
 class SystemCall(object):
@@ -30,28 +35,46 @@ class SystemCall(object):
 
     @staticmethod
     def parse(s: str):
-        _pid, epoch_time, call = re.split('\\s\\s|\\s', s, maxsplit=2)
-
-        if call.startswith('+') or call.startswith('-') or 'unfinished' in call or 'resumed' in call:
+        if len(s) < 1 or 'unfinished' in s or 'resumed' in s or '=' not in s or '(' not in s or ')' not in s or '.' not in s:
             return None
 
-        epoch_time = float(epoch_time)
-        name, rest = call.split('(', maxsplit=1)
-        args_string, result_string = rest.split('=', maxsplit=1)
+        try:
+            _pid, epoch_time, call = re.split('\\s\\s\\s|\\s\\s|\\s', s, maxsplit=2)
 
-        args_string = args_string.strip().split(')')[0]
-        result_string = result_string.split('(')[0]
+            if call.startswith('+') or call.startswith('-'):
+                return None
 
-        name = name.strip()
-        if len(args_string) == 0:
-            args = []
-        else:
-            args = [int(v, 0) for v in args_string.strip().split(',')]
-        if result_string.strip() == '?':
-            result_string = '0'
-        result = int(result_string, 0)
+            try:
+                epoch_time = float(epoch_time)
+            except ValueError:
+                return None
 
-        return SystemCall(epoch_time, name, args, result)
+            name, rest = call.split('(', maxsplit=1)
+            args_string, result_string = rest.split('=', maxsplit=1)
+            if not result_string.strip():
+                return None
+
+            args_string = args_string.strip().split(')')[0]
+            result_string = result_string.split('(')[0].split('E')[0]
+
+            name = name.strip()
+            if len(args_string) == 0:
+                args = []
+            else:
+                args = [int(v, 0) for v in args_string.strip().split(',')]
+            if result_string.strip() == '?':
+                result_string = '0'
+            elif result_string.strip() == '0x':
+                return None
+            result = int(result_string, 0)
+
+            return SystemCall(epoch_time, name, args, result)
+        except:
+            print(s)
+            raise
+
+    def __repr__(self):
+        return 'time={}|call={}|args={}|res={}'.format(self.epoch_time, self.call_name, self.arguments, self.result)
 
 
 class ProgramLog(object):
@@ -101,20 +124,29 @@ def write_program_log(p: ProgramLog):
 class Model(object):
     def __init__(self):
         self.features = []
-        self.model = KernelRidge(kernel='rbf')
-        self.imp = SimpleImputer(missing_values=np.nan, strategy='mean')
+        # self.model = KNeighborsRegressor(n_neighbors=3, p=2)
+        # self.model = LinearRegression()
+        self.model = RandomForestRegressor(n_estimators=150)
+        # self.model = AdaBoostRegressor(n_estimators=200)
+        self.imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0)
+        self.scaler = StandardScaler()
         self.trained = False
 
     @staticmethod
     def get_labeled_logs(dataset: List[ProgramLog]) -> List[Tuple[ProgramLog, float]]:
+        # Logic here is a bit messy -- basically just want MAX_LOG_GRANULARITY entries at most for one log
         items = []
         for log in dataset:
             total_time = log.duration()
+            calls_per_entry = max(len(log.calls) // MAX_LOG_GRANULARITY, 1)
+
             acc = []
             for syscall in log.calls:
                 acc.append(syscall)
-                new_log = ProgramLog(log.cmd, acc)
-                items.append((new_log, (new_log.duration() / total_time) * 100))
+                if len(acc) > 1 and len(acc) % calls_per_entry == 0:
+                    new_log = ProgramLog(log.cmd, acc)
+                    items.append((new_log, (new_log.duration() / total_time) * 1))
+        print("labeled log count", len(items))
         return items
 
     def update_features(self, logs: List[ProgramLog]) -> ():
@@ -131,6 +163,7 @@ class Model(object):
         return vec
 
     def train(self, cmd: List[str], dataset: List[ProgramLog]):
+        print("Generating trimmed dataset...")
         # Create a trimmed dataset of commands that prefix match -- getting as specific as possible
         trimmed_dataset = dataset
         i = 0
@@ -142,12 +175,14 @@ class Model(object):
                 trimmed_dataset = candidate
                 i += 1
 
+        print("Generating labeled logs...")
         trimmed_dataset = Model.get_labeled_logs(trimmed_dataset)
         self.update_features([log for log, label in trimmed_dataset])
 
         if len(trimmed_dataset) > 0:
             x = []
             y = []
+            print("Extracting features from labeled logs...")
             for log, label in trimmed_dataset:
                 x.append(self.extract_features(log))
                 y.append(label)
@@ -155,26 +190,33 @@ class Model(object):
             x = np.array(x)
             y = np.array(y)
 
-            x = normalize(x)
-
+            print("Preprocessing data...")
             self.imp.fit(x, y)
+            x = self.imp.transform(x)
+            self.scaler.fit(x, y)
+            x = self.scaler.transform(x)
+
+            print("Fitting model...")
             self.model.fit(x, y)
+            print("model training accuracy = ", self.model.score(x, y) * 100, "%")
             self.trained = True
 
     def predict_completion(self, log: ProgramLog) -> float:
         if not self.trained:
-            return 100.
+            return 1.
         features = [self.extract_features(log)]
         features = self.imp.transform(features)
+        features = self.scaler.transform(features)
 
-        return self.model.predict(normalize(features))
+        return self.model.predict(features)
 
 
-if __name__ == '__main__':
-    print('pbar starting in', os.getcwd())
+def main():
+    print('starting in cwd = ', os.getcwd())
+    print('data dir = ', PBAR_DATA_DIR)
     cmd = sys.argv[1:]
     cmd_string = ' '.join(cmd)
-    print('running:', cmd_string)
+    print('cmd =', cmd_string)
 
     # Prepare by deleting the temp file if it exists
     try:
@@ -182,20 +224,22 @@ if __name__ == '__main__':
     except OSError:
         pass
 
+    model = Model()
+    print("model =", model)
+    model.train(cmd, read_program_logs())
+
     # Execute strace to get syscall duration
     strace_cmd = 'strace -fttt -e raw=all -o {PBAR_TEMP_FILE} {cmd}'.format(PBAR_TEMP_FILE=PBAR_TEMP_FILE, cmd=cmd_string)
-    strace_proc = subprocess.Popen(strace_cmd, shell=True, stdout=subprocess.DEVNULL)
-    print('strace:', strace_cmd)
+    strace_proc = subprocess.Popen(strace_cmd, shell=True)
+    print('strace cmd = ', strace_cmd)
     print('-' * 80)
-
-    model = Model()
-    model.train(cmd, read_program_logs())
 
     syscalls = []
 
     while not os.path.exists(PBAR_TEMP_FILE):
         time.sleep(1)
 
+    last_report = None
     with open(PBAR_TEMP_FILE, 'r') as strace_file:
         while True:
             where = strace_file.tell()
@@ -209,12 +253,17 @@ if __name__ == '__main__':
                 call = SystemCall.parse(line.strip())
                 if call:
                     syscalls.append(call)
-                completion_percentage = model.predict_completion(ProgramLog(cmd, syscalls))
-                print(completion_percentage, '% done')
+                if last_report is None or time.time_ns() - last_report > 1000 * 1000 * 100:
+                    last_report = time.time_ns()
+                    completion_percentage = model.predict_completion(ProgramLog(cmd, syscalls))
+                    print(completion_percentage * 100, '% done')
 
     write_program_log(ProgramLog(cmd, syscalls))
 
     # End by deleting the temp file
     os.remove(PBAR_TEMP_FILE)
 
+
+if __name__ == '__main__':
+    main()
 
