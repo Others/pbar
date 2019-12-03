@@ -4,6 +4,7 @@ from math import nan
 import numpy as np
 from pathlib import Path
 import pickle
+import progressbar
 import re
 from sklearn.ensemble import AdaBoostRegressor
 from sklearn.ensemble import RandomForestRegressor
@@ -218,6 +219,8 @@ def main():
     cmd_string = ' '.join(cmd)
     print('cmd =', cmd_string)
 
+    os.makedirs(PBAR_DATA_DIR, exist_ok=True)
+
     # Prepare by deleting the temp file if it exists
     try:
         os.remove(PBAR_TEMP_FILE)
@@ -240,23 +243,26 @@ def main():
         time.sleep(1)
 
     last_report = None
-    with open(PBAR_TEMP_FILE, 'r') as strace_file:
-        while True:
-            where = strace_file.tell()
-            line = strace_file.readline()
-            if not line:
+    with progressbar.ProgressBar(min_value=0, max_value=1, widgets=[progressbar.Percentage(), progressbar.Bar()]) as bar:
+        with open(PBAR_TEMP_FILE, 'r') as strace_file:
+            while True:
                 strace_proc.poll()
                 if strace_proc.returncode is not None:
                     break
-                strace_file.seek(where)
-            else:
-                call = SystemCall.parse(line.strip())
-                if call:
-                    syscalls.append(call)
-                if last_report is None or time.time_ns() - last_report > 1000 * 1000 * 100:
-                    last_report = time.time_ns()
-                    completion_percentage = model.predict_completion(ProgramLog(cmd, syscalls))
-                    print(completion_percentage * 100, '% done')
+
+                where = strace_file.tell()
+                line = strace_file.readline()
+                if not line:
+                    strace_file.seek(where)
+                    time.sleep(0.01)
+                else:
+                    call = SystemCall.parse(line.strip())
+                    if call:
+                        syscalls.append(call)
+                    if last_report is None or time.time_ns() - last_report > 0:
+                        last_report = time.time_ns()
+                        completion_percentage = model.predict_completion(ProgramLog(cmd, syscalls))
+                        bar.update(completion_percentage)
 
     write_program_log(ProgramLog(cmd, syscalls))
 
@@ -266,4 +272,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

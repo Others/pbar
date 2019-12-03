@@ -2,12 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="47cd31d2-5496-4ba2-90ca-02e4fc555290" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Vagrantfile" beforeDir="false" afterPath="$PROJECT_DIR$/Vagrantfile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pbar.py" beforeDir="false" afterPath="$PROJECT_DIR$/pbar.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ubuntu-xenial-16.04-cloudimg-console.log" beforeDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -93,7 +89,9 @@
       <updated>1574704995433</updated>
       <workItem from="1574705000523" duration="8111000" />
       <workItem from="1574721102897" duration="10641000" />
-      <workItem from="1574881971536" duration="7120000" />
+      <workItem from="1574881971536" duration="7302000" />
+      <workItem from="1575166967197" duration="3045000" />
+      <workItem from="1575331212961" duration="910000" />
     </task>
     <servers />
   </component>
