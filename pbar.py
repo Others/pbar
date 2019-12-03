@@ -90,7 +90,7 @@ class ProgramLog(object):
     # This method maps a log into a feature map (some features may be missing for some logs)
     def to_feature_map(self) -> Dict[str, Any]:
         # FIXME: Command counts are not good enough on their own
-        feature_dict = defaultdict(int)
+        feature_dict = defaultdict(float)
         for call in self.calls:
             feature_dict[call.call_name + '--count'] += 1.
 
@@ -246,15 +246,15 @@ def main():
     with progressbar.ProgressBar(min_value=0, max_value=1, widgets=[progressbar.Percentage(), progressbar.Bar()]) as bar:
         with open(PBAR_TEMP_FILE, 'r') as strace_file:
             while True:
+                where = strace_file.tell()
+                line = strace_file.readline()
+
                 strace_proc.poll()
                 if strace_proc.returncode is not None:
                     break
 
-                where = strace_file.tell()
-                line = strace_file.readline()
                 if not line:
                     strace_file.seek(where)
-                    time.sleep(0.01)
                 else:
                     call = SystemCall.parse(line.strip())
                     if call:
