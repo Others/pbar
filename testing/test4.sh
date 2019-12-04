@@ -1,1 +1,1 @@
-grep -q -r dir smaller_dir/ *.js
+grep -r dir smaller_dir/ *.js > '.grep.log'
