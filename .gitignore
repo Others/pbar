@@ -1,2 +1,6 @@
 .vagrant
 venv
+testing/large_dir/*
+testing/smaller_dir/*
+testing/large_copy/*
+testing/.ls.log
