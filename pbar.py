@@ -296,11 +296,17 @@ def main():
                 if last_report is None or time.time_ns() - last_report > 0:
                     report_time = time.time_ns()
                     report_log = ProgramLog(cmd, syscalls)
-                    report_logs.append(report_log)
+                    report_logs.append((report_log, time.time_ns()))
 
                     last_report = report_time
                     completion_percentage = model.predict_completion(report_log)
                     bar.update(completion_percentage)
+    duration = time.time_ns() - start_time
+
+    print("command finished, duration", duration)
+    
+    report_logs = [(log, (t - start_time) / duration) for log, t in report_logs]
+    print("testing accuracy", model.check_accuracy(report_logs) * 100, "%")
 
     write_program_log(ProgramLog(cmd, syscalls))
 
