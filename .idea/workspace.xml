@@ -4,7 +4,6 @@
     <list default="true" id="47cd31d2-5496-4ba2-90ca-02e4fc555290" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pbar.py" beforeDir="false" afterPath="$PROJECT_DIR$/pbar.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -92,7 +91,9 @@
       <workItem from="1574721102897" duration="10641000" />
       <workItem from="1574881971536" duration="7302000" />
       <workItem from="1575166967197" duration="3045000" />
-      <workItem from="1575331212961" duration="1986000" />
+      <workItem from="1575331212961" duration="2176000" />
+      <workItem from="1575407925683" duration="140000" />
+      <workItem from="1575416266844" duration="1910000" />
     </task>
     <servers />
   </component>

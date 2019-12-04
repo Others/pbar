@@ -71,7 +71,7 @@ class SystemCall(object):
 
             return SystemCall(epoch_time, name, args, result)
         except:
-            print(s)
+            print("failed to parse", repr(s))
             raise
 
     def __repr__(self):
@@ -211,6 +211,41 @@ class Model(object):
 
         return self.model.predict(features)
 
+    def check_accuracy(self, labled_logs: List[Tuple[ProgramLog, float]]):
+        x = [self.extract_features(log) for log, _ in labled_logs]
+        x = self.imp.transform(x)
+        x = self.scaler.transform(x)
+
+        y = [label for _, label in labled_logs]
+        return self.model.score(x, y)
+
+
+
+def line_generator(f):
+    buf = ""
+
+    while True:
+        where = f.tell()
+
+        byte = os.read(f.fileno(), 1)
+        while byte:
+            buf += byte.decode("utf-8")
+            if buf[-1] in ['\n', '\r']:
+                break
+            where = f.tell()
+            byte = os.read(f.fileno(), 1)
+
+        # print(buf, byte)
+
+        if buf and buf[-1] in ['\n', '\r']:
+            yield buf.strip()
+            buf = ""
+        else:
+            f.seek(where)
+            yield None
+
+
+
 
 def main():
     print('starting in cwd = ', os.getcwd())
@@ -243,26 +278,29 @@ def main():
         time.sleep(1)
 
     last_report = None
+
+    start_time = time.time_ns()
+    report_logs = []
     with progressbar.ProgressBar(min_value=0, max_value=1, widgets=[progressbar.Percentage(), progressbar.Bar()]) as bar:
         with open(PBAR_TEMP_FILE, 'r') as strace_file:
-            while True:
-                where = strace_file.tell()
-                line = strace_file.readline()
-
+            for line in line_generator(strace_file):
                 strace_proc.poll()
-                if strace_proc.returncode is not None:
+                if strace_proc.returncode is not None and len(report_logs) > 0:
                     break
 
-                if not line:
-                    strace_file.seek(where)
-                else:
+                if line:
                     call = SystemCall.parse(line.strip())
                     if call:
                         syscalls.append(call)
-                    if last_report is None or time.time_ns() - last_report > 0:
-                        last_report = time.time_ns()
-                        completion_percentage = model.predict_completion(ProgramLog(cmd, syscalls))
-                        bar.update(completion_percentage)
+
+                if last_report is None or time.time_ns() - last_report > 0:
+                    report_time = time.time_ns()
+                    report_log = ProgramLog(cmd, syscalls)
+                    report_logs.append(report_log)
+
+                    last_report = report_time
+                    completion_percentage = model.predict_completion(report_log)
+                    bar.update(completion_percentage)
 
     write_program_log(ProgramLog(cmd, syscalls))
 
