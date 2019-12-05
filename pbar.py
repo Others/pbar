@@ -24,7 +24,7 @@ PBAR_LOG_DIR = PBAR_DATA_DIR + '/logs'
 # FIXME: We should regen a temp file each time
 PBAR_TEMP_FILE = PBAR_DATA_DIR + '/pbar_tmp.out'
 
-MAX_LOG_GRANULARITY = 200
+MAX_LOG_GRANULARITY = 500
 
 
 class SystemCall(object):
@@ -89,10 +89,14 @@ class ProgramLog(object):
 
     # This method maps a log into a feature map (some features may be missing for some logs)
     def to_feature_map(self) -> Dict[str, Any]:
-        # FIXME: Command counts are not good enough on their own
         feature_dict = defaultdict(float)
-        for call in self.calls:
+        for call in reversed(self.calls):
             feature_dict[call.call_name + '--count'] += 1.
+            if (feature_dict[call.call_name + '--count'] == 1):
+                feature_dict['most_recent_' + call.call_name] = self.calls[-1].epoch_time - call.epoch_time
+                for i, arg in enumerate(call.arguments):
+                    feature_dict[call.call_name + '_arg_' + str(i)] = arg
+                feature_dict[call.call_name + '_result'] = call.result
 
         feature_dict['current_execution_duration'] = self.duration()
 
@@ -127,8 +131,8 @@ class Model(object):
         self.features = []
         # self.model = KNeighborsRegressor(n_neighbors=3, p=2)
         # self.model = LinearRegression()
-        self.model = RandomForestRegressor(n_estimators=150)
-        # self.model = AdaBoostRegressor(n_estimators=200)
+        self.model = RandomForestRegressor(n_estimators=300)
+        #self.model = AdaBoostRegressor(n_estimators=200)
         self.imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0)
         self.scaler = StandardScaler()
         self.trained = False
@@ -212,6 +216,9 @@ class Model(object):
         return self.model.predict(features)
 
     def check_accuracy(self, labled_logs: List[Tuple[ProgramLog, float]]):
+        if not self.trained:
+            return 1.
+
         x = [self.extract_features(log) for log, _ in labled_logs]
         x = self.imp.transform(x)
         x = self.scaler.transform(x)
