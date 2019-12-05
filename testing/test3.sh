@@ -1,2 +1,2 @@
-grep -q -r html large_dir/ > '.grep.log'
-grep -q dir *.sh >> '.grep.log'
+grep -r html large_dir/ > '.grep.log'
+grep dir *.sh >> '.grep.log'
